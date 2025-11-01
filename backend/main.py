@@ -1,85 +1,70 @@
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, request, jsonify, send_file
+from flask_cors import CORS
 import cv2
-import os
-from datetime import datetime
-import pandas as pd
 from deepface import DeepFace
-import threading
+import os
+import base64
+import pandas as pd
+from datetime import datetime
 
 app = Flask(__name__)
-camera = cv2.VideoCapture(0)
+CORS(app)
 
-known_faces_dir = "known_faces"
-attendance_file = "attendance.csv"
+# Ensure folders exist
+os.makedirs("known_faces", exist_ok=True)
+os.makedirs("attendance", exist_ok=True)
 
-known_faces = {}
-if not os.path.exists(known_faces_dir):
-    os.makedirs(known_faces_dir)
-
-for file in os.listdir(known_faces_dir):
-    if file.endswith((".jpg", ".png", ".jpeg")):
-        known_faces[file.split('.')[0]] = os.path.join(known_faces_dir, file)
-
+attendance_file = "attendance/attendance.csv"
 if not os.path.exists(attendance_file):
     pd.DataFrame(columns=["Name", "Time"]).to_csv(attendance_file, index=False)
 
-last_frame = None
+# Utility: save attendance without duplicates
+def mark_attendance(name):
+    df = pd.read_csv(attendance_file)
+    if name not in df["Name"].values:
+        df = pd.concat([df, pd.DataFrame([[name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")]],
+                                         columns=["Name", "Time"])])
+        df.to_csv(attendance_file, index=False)
 
-def generate_frames():
-    global last_frame
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
-        last_frame = frame.copy()
-        _, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route("/take_attendance", methods=["POST"])
+def take_attendance():
+    data = request.get_json()
+    img_data = base64.b64decode(data['image'].split(',')[1])
+    with open("temp.jpg", "wb") as f:
+        f.write(img_data)
 
-@app.route('/mark_attendance', methods=['POST'])
-def mark_attendance():
-    global last_frame
-    if last_frame is None:
-        return jsonify({"status": "error", "message": "No video frame captured"})
+    known_faces = [f"known_faces/{f}" for f in os.listdir("known_faces") if f.endswith(".jpg")]
+    for face_path in known_faces:
+        try:
+            result = DeepFace.verify("temp.jpg", face_path, model_name="Facenet", enforce_detection=False)
+            if result["verified"]:
+                name = os.path.splitext(os.path.basename(face_path))[0]
+                mark_attendance(name)
+                return jsonify({"message": f"✅ {name} marked present!"})
+        except Exception as e:
+            print("Error verifying:", e)
+    return jsonify({"message": "❌ Unknown face"})
 
-    try:
-        result = DeepFace.find(img_path=last_frame, db_path=known_faces_dir, enforce_detection=False)
+@app.route("/register_student", methods=["POST"])
+def register_student():
+    data = request.get_json()
+    name = data['name']
+    img_data = base64.b64decode(data['image'].split(',')[1])
+    file_path = f"known_faces/{name}.jpg"
+    with open(file_path, "wb") as f:
+        f.write(img_data)
+    return jsonify({"message": f"✅ {name} registered successfully!"})
 
-        if len(result) > 0 and not result[0].empty:
-            name = os.path.basename(result[0].iloc[0]["identity"]).split(".")[0]
-        else:
-            name = "Unknown"
-
-        df = pd.read_csv(attendance_file)
-        if name != "Unknown" and name not in df["Name"].values:
-            new_entry = pd.DataFrame([[name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")]], columns=["Name", "Time"])
-            df = pd.concat([df, new_entry], ignore_index=True)
-            df.to_csv(attendance_file, index=False)
-            return jsonify({"status": "success", "name": name})
-        else:
-            return jsonify({"status": "error", "message": "Already marked or unknown"})
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/export_excel', methods=['GET'])
+@app.route("/export_excel")
 def export_excel():
-    try:
-        df = pd.read_csv(attendance_file)
-        excel_path = "attendance.xlsx"
-        df.to_excel(excel_path, index=False)
-        return jsonify({"status": "success", "file": excel_path})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+    df = pd.read_csv(attendance_file)
+    excel_path = "attendance/attendance.xlsx"
+    df.to_excel(excel_path, index=False)
+    return send_file(excel_path, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(debug=True)

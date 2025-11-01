@@ -1,86 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Attendance System</title>
-    <style>
-        body {
-            background: #0f172a;
-            color: white;
-            font-family: 'Segoe UI', sans-serif;
-            text-align: center;
-            margin-top: 30px;
-        }
-        h1 {
-            color: #38bdf8;
-            margin-bottom: 20px;
-        }
-        .video-container {
-            display: flex;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        img {
-            border: 4px solid #38bdf8;
-            border-radius: 10px;
-            box-shadow: 0 0 20px #38bdf8;
-        }
-        .btn {
-            background: #38bdf8;
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            margin: 20px 10px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: 0.2s;
-            font-size: 16px;
-        }
-        .btn:hover {
-            background: #0ea5e9;
-        }
-        #status {
-            margin-top: 10px;
-            color: #22c55e;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AttendAI - Face Recognition</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      background: #f0f2f5; 
+      color: #333;
+    }
+    h1 { margin-top: 20px; }
+    video { border: 3px solid #444; border-radius: 10px; width: 60%; margin-top: 20px; }
+    button {
+      margin: 15px;
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    #takeBtn { background: #007bff; color: white; }
+    #registerBtn { background: #28a745; color: white; }
+    #exportBtn { background: #ffc107; color: black; }
+    button:hover { transform: scale(1.05); }
+    #nameInput { padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; }
+  </style>
 </head>
 <body>
-    <h1>🎓 Smart Attendance System</h1>
+  <h1>AttendAI - Smart Attendance System</h1>
 
-    <div class="video-container">
-        <img src="{{ url_for('video_feed') }}" width="720" alt="Live Video Feed">
-    </div>
+  <video id="video" autoplay></video>
+  <br>
 
-    <div>
-        <button class="btn" onclick="markAttendance()">📸 Mark Attendance</button>
-        <button class="btn" onclick="exportExcel()">📂 Export Excel</button>
-    </div>
+  <div>
+    <button id="takeBtn">📸 Take Attendance</button>
+    <input id="nameInput" type="text" placeholder="Enter student name">
+    <button id="registerBtn">➕ Register New Student</button>
+    <button id="exportBtn">📂 Export Excel</button>
+  </div>
 
-    <p id="status"></p>
+  <script>
+    const video = document.getElementById('video');
+    const takeBtn = document.getElementById('takeBtn');
+    const registerBtn = document.getElementById('registerBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const nameInput = document.getElementById('nameInput');
 
-    <script>
-        async function markAttendance() {
-            document.getElementById("status").innerText = "⏳ Processing...";
-            const res = await fetch("/mark_attendance", { method: "POST" });
-            const data = await res.json();
-            if (data.status === "success") {
-                document.getElementById("status").innerText = "✅ Attendance marked for: " + data.name;
-            } else {
-                document.getElementById("status").innerText = "⚠️ " + data.message;
-            }
-        }
+    // Start webcam
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      video.srcObject = stream;
+    });
 
-        async function exportExcel() {
-            const res = await fetch("/export_excel");
-            const data = await res.json();
-            if (data.status === "success") {
-                document.getElementById("status").innerText = "✅ Excel file saved as attendance.xlsx";
-            } else {
-                document.getElementById("status").innerText = "⚠️ " + data.message;
-            }
-        }
-    </script>
+    // Helper: capture frame as base64
+    function captureFrame() {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg');
+    }
+
+    // Take Attendance
+    takeBtn.onclick = async () => {
+      const frame = captureFrame();
+      await fetch('/take_attendance', {
+        method: 'POST',
+        body: JSON.stringify({ image: frame }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      alert('✅ Attendance recorded!');
+    };
+
+    // Register New Student
+    registerBtn.onclick = async () => {
+      const name = nameInput.value.trim();
+      if (!name) {
+        alert('⚠️ Please enter a name.');
+        return;
+      }
+      const frame = captureFrame();
+      const res = await fetch('/register_student', {
+        method: 'POST',
+        body: JSON.stringify({ name, image: frame }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      alert(data.message);
+      nameInput.value = '';
+    };
+
+    // Export Excel
+    exportBtn.onclick = () => {
+      window.location.href = '/export_excel';
+    };
+  </script>
 </body>
 </html>
