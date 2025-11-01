@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Attendance System</title>
+    <style>
+        body {
+            background: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            text-align: center;
+            margin-top: 30px;
+        }
+        h1 {
+            color: #38bdf8;
+            margin-bottom: 20px;
+        }
+        .video-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        img {
+            border: 4px solid #38bdf8;
+            border-radius: 10px;
+            box-shadow: 0 0 20px #38bdf8;
+        }
+        .btn {
+            background: #38bdf8;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            margin: 20px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #0ea5e9;
+        }
+        #status {
+            margin-top: 10px;
+            color: #22c55e;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎓 Smart Attendance System</h1>
+
+    <div class="video-container">
+        <img src="{{ url_for('video_feed') }}" width="720" alt="Live Video Feed">
+    </div>
+
+    <div>
+        <button class="btn" onclick="markAttendance()">📸 Mark Attendance</button>
+        <button class="btn" onclick="exportExcel()">📂 Export Excel</button>
+    </div>
+
+    <p id="status"></p>
+
+    <script>
+        async function markAttendance() {
+            document.getElementById("status").innerText = "⏳ Processing...";
+            const res = await fetch("/mark_attendance", { method: "POST" });
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById("status").innerText = "✅ Attendance marked for: " + data.name;
+            } else {
+                document.getElementById("status").innerText = "⚠️ " + data.message;
+            }
+        }
+
+        async function exportExcel() {
+            const res = await fetch("/export_excel");
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById("status").innerText = "✅ Excel file saved as attendance.xlsx";
+            } else {
+                document.getElementById("status").innerText = "⚠️ " + data.message;
+            }
+        }
+    </script>
+</body>
+</html>
